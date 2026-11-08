@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALGO live</title>
+<style>
+  html,body{height:100%;margin:0;background:#EDE9E6;color:#111;font-family:"Cormorant Garamond",Garamond,Georgia,serif}
+  #stats{padding:6% 8%;font-size:clamp(18px,3.4vw,34px);line-height:1.15}
+  #stats ul{list-style:disc;margin:0;padding-left:1.1em}
+  #stats li{margin:0 0 .75em}
+  #stats b{font-weight:700}
+  #stats span{font-weight:400}
+  .up{color:#1a7f37}.down{color:#b3261e}
+  #meta{font-size:.5em;margin-top:1.4em;color:#555}
+  #chart,#chart .tradingview-widget-container,#chart .tradingview-widget-container__widget{height:100%;width:100%}
+  .both{display:grid;grid-template-columns:1fr 1fr;height:100%}
+  .both #chart{border-left:1px solid #111}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const v = new URLSearchParams(location.search).get("v"); // "stats", "chart" or empty (both)
+const root = document.getElementById("root");
+
+function statsEl(){
+  const d = document.createElement("div"); d.id = "stats";
+  d.innerHTML = `<ul>
+    <li><b>Price:</b> <span id="price">…</span> <span id="chg"></span></li>
+    <li><b>Market cap:</b> <span id="mcap">…</span></li>
+    <li><b>24h volume:</b> <span id="vol">…</span></li>
+    <li><b>Circulating supply:</b> <span id="supply">…</span></li>
+    <li><b>Trading activity:</b> <span id="act">…</span></li>
+    <li><b>Popularity:</b> <span id="rank">…</span></li></ul>
+    <div id="meta">Loading live data…</div>`;
+  return d;
+}
+function chartEl(){
+  const d = document.createElement("div"); d.id = "chart";
+  const c = document.createElement("div"); c.className = "tradingview-widget-container";
+  const w = document.createElement("div"); w.className = "tradingview-widget-container__widget";
+  c.appendChild(w);
+  const s = document.createElement("script");
+  s.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  s.async = true;
+  s.text = JSON.stringify({
+    autosize:true, symbol:"COINBASE:ALGOUSD", interval:"D", range:"1M",
+    theme:"light", style:"3", locale:"en", backgroundColor:"#EDE9E6",
+    hide_side_toolbar:true, allow_symbol_change:false, withdateranges:true,
+    hide_top_toolbar:false, save_image:false
+  });
+  c.appendChild(s); d.appendChild(c);
+  return d;
+}
+
+if (v === "stats") root.appendChild(statsEl());
+else if (v === "chart") root.appendChild(chartEl());
+else { root.className = "both"; root.append(statsEl(), chartEl()); }
+
+const usd = (n,dig=0)=>"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:dig,maximumFractionDigits:dig});
+async function refresh(){
+  if(!document.getElementById("price")) return;
+  try{
+    const r = await fetch("https://api.coingecko.com/api/v3/coins/algorand?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false");
+    if(!r.ok) throw new Error(r.status);
+    const m = (await r.json()).market_data;
+    const set=(id,t)=>document.getElementById(id).textContent=t;
+    set("price", usd(m.current_price.usd,4));
+    const ch=m.price_change_percentage_24h, e=document.getElementById("chg");
+    e.textContent=(ch>=0?"▲ ":"▼ ")+Math.abs(ch).toFixed(2)+"% (24h)";
+    e.className=ch>=0?"up":"down";
+    set("mcap", usd(m.market_cap.usd));
+    set("vol", usd(m.total_volume.usd));
+    set("supply", Math.round(m.circulating_supply).toLocaleString("en-US")+" ALGO (max 10,000,000,000)");
+    set("act", "volume is "+(100*m.total_volume.usd/m.market_cap.usd).toFixed(1)+"% of market cap");
+    set("rank", "#"+m.market_cap_rank+" by market cap");
+    set("meta","Live data from CoinGecko · updated "+new Date().toLocaleTimeString());
+  }catch(err){
+    document.getElementById("meta").textContent="Live data unavailable right now. Retrying…";
+  }
+}
+refresh(); setInterval(refresh, 60000);
+</script>
+</body>
+</html>
